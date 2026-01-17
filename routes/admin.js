@@ -259,7 +259,13 @@ router.get('/blogs/:id', protect, async (req, res) => {
 // @access  Private
 router.post('/blogs', protect, upload.single('image'), async (req, res) => {
   try {
-    const { title, excerpt, content, author, category, isPublished } = req.body;
+    const { title, excerpt, content, author, category, isPublished, isFeatured } = req.body;
+
+    // If this blog is being marked as featured, unfeature all other blogs
+    const shouldFeature = isFeatured === 'true' || isFeatured === true;
+    if (shouldFeature) {
+      await Blog.updateMany({ isFeatured: true }, { isFeatured: false });
+    }
 
     const blogData = {
       title,
@@ -267,7 +273,8 @@ router.post('/blogs', protect, upload.single('image'), async (req, res) => {
       content,
       author,
       category: category || 'Others',
-      isPublished: isPublished !== 'false'
+      isPublished: isPublished !== 'false',
+      isFeatured: shouldFeature
     };
 
     // Handle image upload
@@ -296,11 +303,18 @@ router.post('/blogs', protect, upload.single('image'), async (req, res) => {
 // @access  Private
 router.put('/blogs/:id', protect, upload.single('image'), async (req, res) => {
   try {
-    const { title, excerpt, content, author, category, isPublished } = req.body;
+    const { title, excerpt, content, author, category, isPublished, isFeatured } = req.body;
 
     const blog = await Blog.findById(req.params.id);
     if (!blog) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
+    }
+
+    // Handle featured logic - only one blog can be featured at a time
+    const shouldFeature = isFeatured === 'true' || isFeatured === true;
+    if (shouldFeature && !blog.isFeatured) {
+      // This blog is being marked as featured, unfeature all other blogs
+      await Blog.updateMany({ isFeatured: true }, { isFeatured: false });
     }
 
     // Update fields
@@ -310,6 +324,7 @@ router.put('/blogs/:id', protect, upload.single('image'), async (req, res) => {
     blog.author = author || blog.author;
     blog.category = category || blog.category;
     blog.isPublished = isPublished !== undefined ? isPublished !== 'false' : blog.isPublished;
+    blog.isFeatured = isFeatured !== undefined ? shouldFeature : blog.isFeatured;
 
     // Handle image upload
     if (req.file) {
